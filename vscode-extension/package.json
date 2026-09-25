@@ -1,0 +1,19 @@
+{
+  "name": "mar-ci-connect-vscode",
+  "displayName": "MAR-CI Connect",
+  "description": "Ouvre MAR-CI Connect dans un panneau VS Code et insère les transcriptions dans l’éditeur.",
+  "version": "0.1.0",
+  "publisher": "mar-ci",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onCommand:marciConnect.open", "onCommand:marciConnect.insertTranscript"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "marciConnect.open", "title": "MAR-CI Connect: Ouvrir la visio" },
+      { "command": "marciConnect.insertTranscript", "title": "MAR-CI Connect: Insérer le compte-rendu dans l’éditeur actif" }
+    ]
+  },
+  "scripts": { "compile": "tsc -p ./", "watch": "tsc -watch -p ./" },
+  "devDependencies": { "@types/vscode": "^1.85.0", "@types/node": "^20.0.0", "typescript": "^5.0.0" }
+}

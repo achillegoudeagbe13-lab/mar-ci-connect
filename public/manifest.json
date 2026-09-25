@@ -1,0 +1,16 @@
+{
+  "name": "MAR-CI Connect",
+  "short_name": "MAR-CI",
+  "description": "Collaboration vidéo et réunions d'équipe.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111311",
+  "theme_color": "#d8f060",
+  "orientation": "any",
+  "icons": [{
+    "src": "/icon.svg",
+    "sizes": "any",
+    "type": "image/svg+xml",
+    "purpose": "any maskable"
+  }]
+}
