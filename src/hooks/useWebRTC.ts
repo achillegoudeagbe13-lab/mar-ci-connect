@@ -25,14 +25,16 @@ const configuredIceServers = import.meta.env.VITE_ICE_SERVERS
 const rtcConfig: RTCConfiguration = {
   iceServers: configuredIceServers
     ? configuredIceServers.split(',').map((urls: string) => ({ urls: urls.trim() }))
-    : [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
+    : [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun2.l.google.com:19302' }],
 }
 
-const signalServerUrl = import.meta.env.VITE_SIGNAL_SERVER_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:3001')
+const socketUrlFromQuery = new URLSearchParams(window.location.search).get('socketUrl')
+  const signalServerUrl = socketUrlFromQuery || import.meta.env.VITE_SIGNAL_SERVER_URL || (import.meta.env.PROD ? 'https://mar-ci-connect.onrender.com' : 'http://localhost:3001')
 
 export function useWebRTC(roomId: string | null) {
   const socketRef = useRef<Socket | null>(null)
   const peersRef = useRef(new Map<string, RTCPeerConnection>())
+  const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>())
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -147,13 +149,17 @@ export function useWebRTC(roomId: string | null) {
       if (!peer) return
       if ('type' in signal && signal.type) {
         await peer.setRemoteDescription(signal)
+        const pendingCandidates = pendingCandidatesRef.current.get(from) || []
+        for (const candidate of pendingCandidates) await peer.addIceCandidate(candidate)
+        pendingCandidatesRef.current.delete(from)
         if (signal.type === 'offer') {
           const answer = await peer.createAnswer()
           await peer.setLocalDescription(answer)
           sendSignal(from, answer)
         }
       } else if ('candidate' in signal && signal.candidate) {
-        await peer.addIceCandidate(signal)
+        if (peer.remoteDescription) await peer.addIceCandidate(signal)
+        else pendingCandidatesRef.current.set(from, [...(pendingCandidatesRef.current.get(from) || []), signal])
       }
     })
     socket.on('user-disconnected', (peerId: string) => {
@@ -181,7 +187,14 @@ export function useWebRTC(roomId: string | null) {
       setError('Vous avez été expulsé de cette réunion par l’hôte.')
       socket.disconnect()
     })
-    socket.on('disconnect', () => setConnectionQuality('offline'))
+    socket.on('disconnect', () => {
+      joined = false
+      peersRef.current.forEach((peer) => peer.close())
+      peersRef.current.clear()
+      pendingCandidatesRef.current.clear()
+      setRemoteStreams([])
+      setConnectionQuality('offline')
+    })
     socket.on('connect_error', () => {
       setConnectionQuality('offline')
       setError('Serveur de signalement indisponible. Nouvelle tentative en cours...')
@@ -194,6 +207,7 @@ export function useWebRTC(roomId: string | null) {
       socket.disconnect()
       peersRef.current.forEach((peer) => peer.close())
       peersRef.current.clear()
+      pendingCandidatesRef.current.clear()
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
       cameraStreamRef.current = null

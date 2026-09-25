@@ -9,6 +9,21 @@
   "activationEvents": ["onCommand:marciConnect.open", "onCommand:marciConnect.insertTranscript"],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "MAR-CI Connect",
+      "properties": {
+        "marciConnect.applicationUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "URL publique de la PWA MAR-CI Connect."
+        },
+        "marciConnect.signalServerUrl": {
+          "type": "string",
+          "default": "",
+          "description": "URL du serveur Socket.io. Laisser vide si la PWA utilise sa configuration VITE_SIGNAL_SERVER_URL."
+        }
+      }
+    },
     "commands": [
       { "command": "marciConnect.open", "title": "MAR-CI Connect: Ouvrir la visio" },
       { "command": "marciConnect.insertTranscript", "title": "MAR-CI Connect: Insérer le compte-rendu dans l’éditeur actif" }

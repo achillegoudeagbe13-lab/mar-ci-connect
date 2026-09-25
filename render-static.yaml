@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mar-ci-connect-pwa
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SIGNAL_SERVER_URL
+        sync: false
+      - key: VITE_ICE_SERVERS
+        sync: false

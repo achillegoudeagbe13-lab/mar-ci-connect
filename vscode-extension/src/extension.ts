@@ -3,7 +3,13 @@ import * as vscode from 'vscode'
 let panel: vscode.WebviewPanel | undefined
 let latestTranscript = ''
 
-const applicationUrl = process.env.MARCI_CONNECT_URL || 'http://localhost:5173'
+function getApplicationUrl() {
+  return vscode.workspace.getConfiguration('marciConnect').get<string>('applicationUrl') || process.env.MARCI_CONNECT_URL || 'http://localhost:5173'
+}
+
+function getSignalServerUrl() {
+  return vscode.workspace.getConfiguration('marciConnect').get<string>('signalServerUrl') || process.env.MARCI_SIGNAL_URL || ''
+}
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand('marciConnect.open', () => openPanel(context)))
@@ -31,16 +37,18 @@ function openPanel(context: vscode.ExtensionContext) {
     enableScripts: true,
     retainContextWhenHidden: true,
   })
-  panel.webview.html = getWebviewHtml(panel.webview, applicationUrl)
+  panel.webview.html = getWebviewHtml(panel.webview, getApplicationUrl(), getSignalServerUrl())
   panel.webview.onDidReceiveMessage((message: { type?: string; markdown?: string }) => {
     if (message.type === 'marci-transcription' && typeof message.markdown === 'string') latestTranscript = message.markdown
   }, undefined, context.subscriptions)
   panel.onDidDispose(() => { panel = undefined }, undefined, context.subscriptions)
 }
 
-function getWebviewHtml(webview: vscode.Webview, url: string) {
+function getWebviewHtml(webview: vscode.Webview, url: string, signalUrl: string) {
   const nonce = getNonce()
-  const escapedUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const applicationUri = new URL(url)
+  if (signalUrl) applicationUri.searchParams.set('socketUrl', signalUrl)
+  const escapedUrl = applicationUri.toString().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return `<!doctype html>
 <html lang="fr">
 <head>
