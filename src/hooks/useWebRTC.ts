@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { io, type Socket } from 'socket.io-client'
+import { dedupeById, mergeRemoteStreams, normalizeConnectionQuality, replaceTrackInStream } from '../lib/media-transport'
 
 type SignalDescription = RTCSessionDescriptionInit | RTCIceCandidateInit
 
@@ -75,13 +76,11 @@ export function useWebRTC(roomId: string | null) {
     peer.ontrack = (event) => {
       const stream = event.streams[0]
       if (!stream) return
-      setRemoteStreams((streams) => {
-        const existing = streams.find((item) => item.id === peerId)
-        return existing ? streams.map((item) => item.id === peerId ? { ...item, stream } : item) : [...streams, { id: peerId, stream }]
-      })
+      setRemoteStreams((streams) => mergeRemoteStreams(streams, peerId, stream))
     }
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'connected') setConnectionQuality('good')
+      const nextQuality = normalizeConnectionQuality(peer.connectionState)
+      setConnectionQuality(nextQuality)
       if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) removePeer(peerId)
     }
 
@@ -109,6 +108,13 @@ export function useWebRTC(roomId: string | null) {
       setConnectionQuality('good')
       joinRoom()
     })
+    socket.on('reconnect', () => {
+      setConnectionQuality('good')
+      if (roomId) socket.emit('join-room', roomId)
+    })
+    socket.on('reconnect_attempt', () => {
+      setConnectionQuality('poor')
+    })
 
     const start = async () => {
       try {
@@ -132,12 +138,13 @@ export function useWebRTC(roomId: string | null) {
 
     socket.on('room-state', ({ users, hostId }: { users: RoomParticipant[]; hostId: string }) => {
       const currentSocketId = socket.id || ''
-      setParticipants([...users, { id: currentSocketId, name: 'Vous', isHost: currentSocketId === hostId }])
+      const nextParticipants = dedupeById([...users, { id: currentSocketId, name: 'Vous', isHost: currentSocketId === hostId }])
+      setParticipants(nextParticipants)
       setIsHost(socket.id === hostId)
-      users.forEach((user) => void createPeer(user.id, true))
+      users.filter((user) => user.id !== currentSocketId).forEach((user) => void createPeer(user.id, true))
     })
     socket.on('user-connected', (user: RoomParticipant) => {
-      setParticipants((current) => [...current.filter((item) => item.id !== user.id), user])
+      setParticipants((current) => dedupeById([...current.filter((item) => item.id !== user.id), user]))
       void createPeer(user.id, false)
     })
     socket.on('signal', async ({ from, signal }: SignalMessage) => {
@@ -250,7 +257,8 @@ export function useWebRTC(roomId: string | null) {
       if (!newTrack || !oldTrack) return false
       peersRef.current.forEach((peer) => peer.getSenders().find((sender) => sender.track?.kind === kind)?.replaceTrack(newTrack))
       oldTrack.stop()
-      const nextStream = new MediaStream([...localStreamRef.current.getTracks().filter((track) => track !== oldTrack), newTrack])
+      const nextStream = replaceTrackInStream(localStreamRef.current, kind, newTrack)
+      if (!nextStream) return false
       localStreamRef.current = nextStream
       if (kind === 'video') cameraStreamRef.current = nextStream
       setLocalStream(nextStream)
@@ -260,6 +268,19 @@ export function useWebRTC(roomId: string | null) {
       return false
     }
   }, [refreshDevices])
+
+  const leaveRoom = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.emit('leave-room')
+      socketRef.current.disconnect()
+    }
+    setRemoteStreams([])
+    setParticipants([])
+    setIsHost(false)
+    setRaisedHands([])
+    setAnnotations([])
+    setConnectionQuality('offline')
+  }, [])
 
   const raiseHand = useCallback((raised: boolean) => {
     socketRef.current?.emit('hand-raise', { raised })
@@ -300,9 +321,10 @@ export function useWebRTC(roomId: string | null) {
       screenTrack.onended = () => void toggleScreenShare()
       return true
     } catch {
+      setConnectionQuality('poor')
       return false
     }
   }, [isSharing])
 
-  return { localStream, remoteStreams, isSharing, error, participants, raisedHands, reactions, messages, isHost, selfId, annotations, connectionQuality, videoDevices, audioDevices, toggleTrack, toggleScreenShare, raiseHand, sendReaction, sendChatMessage, moderate, sendAnnotation, clearAnnotations, refreshDevices, selectDevice }
+  return { localStream, remoteStreams, isSharing, error, participants, raisedHands, reactions, messages, isHost, selfId, annotations, connectionQuality, videoDevices, audioDevices, toggleTrack, toggleScreenShare, leaveRoom, raiseHand, sendReaction, sendChatMessage, moderate, sendAnnotation, clearAnnotations, refreshDevices, selectDevice }
 }
